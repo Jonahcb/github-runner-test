@@ -1,0 +1,50 @@
+name: PR Test Mac MLX
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+concurrency:
+  group: pr-test-mac-mlx-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stage-a-test-mac-mlx:
+    if: |
+      github.event_name != 'pull_request' ||
+      (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'run-ci')) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'run-ci')
+    runs-on: macos-latest
+    timeout-minutes: 240
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        timeout-minutes: 20
+        run: |
+          uv venv -p 3.11 my-venv
+          source my-venv/bin/activate
+          uv pip install --upgrade pip
+          rm -f python/pyproject.toml && mv python/pyproject_other.toml python/pyproject.toml
+          uv pip install -e "python[all_mps]"
+          uv pip install mlx mlx-lm
+
+      - name: Run MLX test
+        timeout-minutes: 30
+        run: |
+          source my-venv/bin/activate
+          cd test/
+          python3 registered/models/test_qwen3_mlx_accuracy.py
